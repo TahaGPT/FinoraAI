@@ -1,0 +1,63 @@
+# ── Android / Gradle ─────────────────────────────────────────────
+*.iml
+.gradle/
+local.properties
+.idea/
+*.hprof
+android/build/
+android/app/build/
+android/.gradle/
+android/captures/
+
+# ── APK / AAB / Signing ─────────────────────────────────────────
+*.apk
+*.aab
+*.ap_
+*.jks
+*.keystore
+signing.properties
+
+# ── Compiled / Generated ────────────────────────────────────────
+*.class
+*.dex
+*.o
+*.so
+gen/
+out/
+build/
+
+# ── OS / IDE ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+
+# ── Python (backend) ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.egg
+.venv/
+venv/
+env/
+.env
+.env.local
+
+# ── Node (if any tooling) ───────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ── Logs ────────────────────────────────────────────────────────
+*.log
+
+# ── Secrets / Credentials ───────────────────────────────────────
+google-services.json
+*.pem
+*.p12
+credentials.json

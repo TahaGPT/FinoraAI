@@ -1,0 +1,12 @@
+pydantic-ai
+langgraph
+pydantic>=2.7.0
+fastapi
+uvicorn
+httpx
+beautifulsoup4
+pandas
+pdfplumber
+pypdf
+web3
+nest-asyncio

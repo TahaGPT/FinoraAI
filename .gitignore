@@ -61,3 +61,43 @@ google-services.json
 *.pem
 *.p12
 credentials.json
+
+
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Environment Variables - NEVER commit these
+.env
+.env.local
+.env.production
+*.env
+
+# LangGraph checkpoints
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/

@@ -206,15 +206,20 @@ async def run_graph_background(session_id: str, initial_state: FinoraState, conf
             ]
         }
         
+        def get_val(item, attr):
+            if isinstance(item, dict):
+                return item.get(attr)
+            return getattr(item, attr, None)
+
         plan_data = [
             {
-                "action_id": a.action_id,
-                "type": a.type,
-                "description": a.description,
-                "status": a.status,
-                "dependencies": a.dependencies,
-                "rollback_action": a.rollback_action,
-                "estimated_cost": getattr(a, 'estimated_cost', 0)
+                "action_id": get_val(a, 'action_id'),
+                "type": get_val(a, 'type'),
+                "description": get_val(a, 'description'),
+                "status": get_val(a, 'status'),
+                "dependencies": get_val(a, 'dependencies'),
+                "rollback_action": get_val(a, 'rollback_action'),
+                "estimated_cost": get_val(a, 'estimated_cost') or 0
             }
             for a in action_plan
         ]

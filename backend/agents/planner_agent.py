@@ -23,7 +23,7 @@ class ActionPlan(BaseModel):
 
 def _get_llm():
     return ChatGoogleGenerativeAI(
-        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
         google_api_key=os.environ["GOOGLE_API_KEY"],
         temperature=0.2,
     )

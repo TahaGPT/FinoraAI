@@ -190,14 +190,7 @@ async def get_dashboard_kpis(email: str = "taha@finora.ai", db: AsyncSession = D
         metrics = result.scalars().all()
         
         if not metrics:
-            # Fallback for new/unknown users
-            return {
-                "runway_days": 142,
-                "current_balance": 4350000.0,
-                "monthly_burn": 780000.0,
-                "mom_change": -3.2,
-                "health_score": 72
-            }
+            return {} # Strictly return empty if not found in DB
             
         data = {m.metric_name.split(":")[-1]: m.value for m in metrics}
         return data

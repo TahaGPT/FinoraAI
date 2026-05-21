@@ -18,7 +18,7 @@ object ApiConfig {
     // Local emulator:  "http://10.0.2.2:8000/"
     // Local device:    "http://<YOUR_PC_IP>:8000/"
     // Railway:         "https://your-app.up.railway.app/"
-    private const val BASE_URL = "http://10.0.2.2:8000/"
+    private const val BASE_URL = "https://finoraai-production.up.railway.app/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY

@@ -1,5 +1,6 @@
 package com.finora.ai.viewmodel
 
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -19,6 +20,7 @@ import kotlinx.coroutines.launch
  */
 class FinoraViewModel : ViewModel() {
 
+    private val TAG = "FinoraDebug"
     private val repository = FinoraRepository()
 
     // ── Pipeline State ──────────────────────────────────────────
@@ -124,6 +126,7 @@ class FinoraViewModel : ViewModel() {
      * The WarRoom screen observes pipelineState to animate progress.
      */
     fun startAnalysis(selectedSourceTypes: List<String>) {
+        Log.d(TAG, "Starting analysis for sources: $selectedSourceTypes")
         viewModelScope.launch {
             pipelineState = PipelineState.Running(step = "INITIATING", progress = 0.1f)
             analysisResult = null
@@ -131,6 +134,7 @@ class FinoraViewModel : ViewModel() {
             executionState = ExecutionState.Idle
 
             val documents = buildDemoDocuments(selectedSourceTypes)
+            Log.d(TAG, "Prepared ${documents.size} demo documents. Sending request to backend...")
 
             repository.startAnalysis(
                 documents = documents,
@@ -139,11 +143,13 @@ class FinoraViewModel : ViewModel() {
                 .onSuccess { response ->
                     val sessionId = response.sessionId
                     currentSessionId = sessionId
+                    Log.d(TAG, "Analysis started successfully! Session ID: $sessionId. Status: ${response.status}")
                     
                     // Start polling for results
                     pollAnalysisStatus(sessionId)
                 }
                 .onFailure { error ->
+                    Log.e(TAG, "Failed to start analysis: ${error.localizedMessage}", error)
                     pipelineState = PipelineState.Error(
                         error.localizedMessage ?: "Failed to start analysis"
                     )
@@ -153,40 +159,37 @@ class FinoraViewModel : ViewModel() {
 
     private fun pollAnalysisStatus(sessionId: String) {
         viewModelScope.launch {
+            Log.d(TAG, "Started polling for session: $sessionId")
             var isComplete = false
             var attempts = 0
             val maxAttempts = 60 // 2 minutes max polling
 
             while (!isComplete && attempts < maxAttempts) {
                 attempts++
+                Log.d(TAG, "Polling attempt $attempts/$maxAttempts for $sessionId...")
                 delay(2000) // Poll every 2 seconds
 
                 repository.getSessionStatus(sessionId).onSuccess { status ->
                     val currentStep = status.currentStep ?: "PROCESSING"
+                    Log.d(TAG, "Current step for $sessionId: $currentStep")
+                    
                     pipelineState = PipelineState.Running(
                         step = currentStep,
                         progress = 0.3f + (attempts.toFloat() / maxAttempts.toFloat()) * 0.6f
                     )
-
-                    // Check if analysis is actually done (we need the full report)
-                    // The getSessionStatus endpoint currently only returns basic stats.
-                    // We need to re-fetch the full session once it moves past planning.
+...
                     if (currentStep == "VALIDATION_COMPLETE" || currentStep == "PLANNING_COMPLETE") {
-                        // Re-fetch full session to get insight report and action plan
-                        // We use the startAnalysis success response structure
-                        // Actually, let's update the backend to return full data in getSessionStatus 
-                        // or add a GET /analyze/session/{id} that returns everything.
-                        
-                        // For now, let's assume we can re-query a "final" state
+                        Log.d(TAG, "Analysis complete or awaiting approval! Fetching full results for $sessionId")
                         isComplete = true
                         fetchFinalAnalysisResult(sessionId)
                     }
-                }.onFailure {
-                    // Ignore transient errors while polling
+                }.onFailure { error ->
+                    Log.w(TAG, "Polling failed for $sessionId: ${error.localizedMessage}")
                 }
             }
             
             if (!isComplete && attempts >= maxAttempts) {
+                Log.e(TAG, "Analysis timed out for $sessionId after $maxAttempts attempts.")
                 pipelineState = PipelineState.Error("Analysis timed out. Please try again.")
             }
         }
@@ -194,10 +197,13 @@ class FinoraViewModel : ViewModel() {
 
     private fun fetchFinalAnalysisResult(sessionId: String) {
         viewModelScope.launch {
+            Log.d(TAG, "Fetching full session results for: $sessionId")
             repository.getFullSessionResults(sessionId).onSuccess { response ->
+                Log.d(TAG, "Successfully retrieved analysis report for $sessionId")
                 analysisResult = response
                 pipelineState = PipelineState.Complete(response)
             }.onFailure { error ->
+                Log.e(TAG, "Failed to fetch final results for $sessionId: ${error.localizedMessage}")
                 pipelineState = PipelineState.Error("Failed to fetch analysis results: ${error.localizedMessage}")
             }
         }

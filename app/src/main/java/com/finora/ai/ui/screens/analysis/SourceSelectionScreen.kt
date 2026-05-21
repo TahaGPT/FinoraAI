@@ -1,5 +1,8 @@
 package com.finora.ai.ui.screens.analysis
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -12,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,7 +34,7 @@ import kotlinx.coroutines.delay
 
 // ═══════════════════════════════════════════════════════════════
 // Source Selection Screen — Multi-source analysis setup
-// Now wired to FinoraViewModel → backend API
+// Now with functional file picking & simulated upload
 // ═══════════════════════════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,6 +45,7 @@ fun SourceSelectionScreen(
     onBack: () -> Unit,
 ) {
     val selectedSources = remember { mutableStateListOf<SourceType>() }
+    val uploadedFiles = remember { mutableStateMapOf<SourceType, String>() }
     var showContent by remember { mutableStateOf(false) }
     var isStarting by remember { mutableStateOf(false) }
 
@@ -54,6 +60,14 @@ fun SourceSelectionScreen(
         if (sessionId != null && isStarting) {
             onStartAnalysis(sessionId)
         }
+    }
+
+    // File Pickers
+    val pdfPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let { uploadedFiles[SourceType.PDF] = "Selected: ${it.path?.substringAfterLast("/")}" }
+    }
+    val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let { uploadedFiles[SourceType.CSV] = "Selected: ${it.path?.substringAfterLast("/")}" }
     }
 
     Scaffold(
@@ -198,13 +212,25 @@ fun SourceSelectionScreen(
                     SourceToggleCard(
                         sourceType = sourceType,
                         isSelected = sourceType in selectedSources,
+                        uploadedInfo = uploadedFiles[sourceType],
                         onToggle = {
                             if (sourceType in selectedSources) {
                                 selectedSources.remove(sourceType)
+                                uploadedFiles.remove(sourceType)
                             } else {
                                 selectedSources.add(sourceType)
                             }
                         },
+                        onUpload = {
+                            when (sourceType) {
+                                SourceType.PDF -> pdfPicker.launch("application/pdf")
+                                SourceType.CSV -> csvPicker.launch("*/*")
+                                SourceType.URL -> uploadedFiles[SourceType.URL] = "URL Connected"
+                                SourceType.REAL_TIME -> uploadedFiles[SourceType.REAL_TIME] = "Feed Connected"
+                                SourceType.GHOST_LEDGER -> uploadedFiles[SourceType.GHOST_LEDGER] = "Camera Ready"
+                                SourceType.GOOGLE_SHEETS -> uploadedFiles[SourceType.GOOGLE_SHEETS] = "Sheet Linked"
+                            }
+                        }
                     )
                 }
             }
@@ -216,7 +242,9 @@ fun SourceSelectionScreen(
 private fun SourceToggleCard(
     sourceType: SourceType,
     isSelected: Boolean,
+    uploadedInfo: String?,
     onToggle: () -> Unit,
+    onUpload: () -> Unit,
 ) {
     val borderColor by animateColorAsState(
         targetValue = if (isSelected) MintLeaf else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
@@ -253,70 +281,92 @@ private fun SourceToggleCard(
             defaultElevation = if (isSelected) 4.dp else 0.dp
         ),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Icon
-            Icon(
-                imageVector = sourceType.icon,
-                contentDescription = sourceType.label,
-                modifier = Modifier.size(32.dp),
-                tint = if (isSelected) MintLeaf else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // Label & description
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = sourceType.label,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = when (sourceType) {
-                        SourceType.PDF -> "Upload bank statements, audit reports"
-                        SourceType.URL -> "Paste news article or data page URL"
-                        SourceType.CSV -> "Import structured data from POS exports"
-                        SourceType.REAL_TIME -> "Connect simulated market data feed"
-                        SourceType.GHOST_LEDGER -> "Photograph handwritten Urdu/English ledger"
-                        SourceType.GOOGLE_SHEETS -> "Connect your Google Sheets in real-time"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            // Selection indicator
-            AnimatedVisibility(
-                visible = isSelected,
-                enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
-                exit = scaleOut() + fadeOut(),
+        Column {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MintLeaf),
-                    contentAlignment = Alignment.Center,
+                // Icon
+                Icon(
+                    imageVector = sourceType.icon,
+                    contentDescription = sourceType.label,
+                    modifier = Modifier.size(32.dp),
+                    tint = if (isSelected) MintLeaf else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Label & description
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = sourceType.label,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = when (sourceType) {
+                            SourceType.PDF -> "Upload bank statements, audit reports"
+                            SourceType.URL -> "Paste news article or data page URL"
+                            SourceType.CSV -> "Import structured data from POS exports"
+                            SourceType.REAL_TIME -> "Connect simulated market data feed"
+                            SourceType.GHOST_LEDGER -> "Photograph handwritten Urdu/English ledger"
+                            SourceType.GOOGLE_SHEETS -> "Connect your Google Sheets in real-time"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                // Selection indicator
+                AnimatedVisibility(
+                    visible = isSelected,
+                    enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+                    exit = scaleOut() + fadeOut(),
                 ) {
-                    Icon(
-                        Icons.Filled.Check,
-                        contentDescription = "Selected",
-                        tint = InkBlack,
-                        modifier = Modifier.size(18.dp),
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MintLeaf),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = "Selected",
+                            tint = InkBlack,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                if (!isSelected) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                RoundedCornerShape(8.dp)
+                            )
                     )
                 }
             }
-            if (!isSelected) {
-                Box(
+
+            // Uploaded Status Info
+            if (isSelected && uploadedInfo != null) {
+                Row(
                     modifier = Modifier
-                        .size(28.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                )
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .background(SuccessGreen.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Description, null, Modifier.size(16.dp), tint = SuccessGreen)
+                    Spacer(Modifier.width(8.dp))
+                    Text(uploadedInfo, style = MaterialTheme.typography.labelSmall, color = SuccessGreen)
+                }
             }
         }
     }
@@ -339,7 +389,7 @@ private fun SourceToggleCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { /* TODO: File picker / URL input */ }
+                    .clickable { onUpload() }
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,

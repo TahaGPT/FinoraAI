@@ -93,7 +93,6 @@ async def constraint_validator_node(state: dict) -> dict:
     Falls back to approving all actions if the LLM call fails.
     """
     try:
-        await asyncio.sleep(13)
         limits = CorporateLimits(
             available_budget=500000.0,
             current_cashflow=120000.0,

@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -176,64 +176,15 @@ async def get_audit_trail(db: AsyncSession = Depends(get_db)):
         logger.error(f"Error fetching audit trail: {e}")
         return []
 
-@app.post("/analyze/session")
-async def start_analysis_session(request: AnalysisRequest, db: AsyncSession = Depends(get_db)):
+async def run_graph_background(session_id: str, initial_state: FinoraState, config: dict):
     """
-    Receives documents from the Android app.
-    Triggers the agent pipeline and returns a session_id.
+    Runs the agent graph in the background and updates the database upon completion.
+    This prevents HTTP timeouts.
     """
-    session_id = f"session_{uuid.uuid4().hex[:8]}"
-    
-    # Save session to DB
-    new_session = models.AnalysisSession(
-        id=session_id,
-        status="INGESTING",
-        user_id="default_user" # Simplified for hackathon
-    )
-    db.add(new_session)
-    
-    documents = []
-    for doc in request.documents:
-        ingested_doc = IngestedDocument(
-            id=doc.id,
-            source_type=doc.source_type,
-            raw_content=doc.raw_content,
-            normalized_content=doc.normalized_content,
-            credibility_score=doc.credibility_score,
-            document_timestamp=doc.document_timestamp,
-            staleness_score=doc.staleness_score
-        )
-        documents.append(ingested_doc)
-        
-        # Save document to DB
-        db_doc = models.Document(
-            id=doc.id,
-            session_id=session_id,
-            source_type=doc.source_type,
-            raw_content=doc.raw_content,
-            normalized_content=doc.normalized_content,
-            credibility_score=doc.credibility_score,
-            document_timestamp=doc.document_timestamp,
-            staleness_score=doc.staleness_score
-        )
-        db.add(db_doc)
-
-    await db.commit()
-
-    initial_state: FinoraState = {
-        "session_id": session_id,
-        "documents": documents,
-        "insight_report": None,
-        "resolved_contradictions": [],
-        "action_plan": [],
-        "execution_log": [],
-        "current_step": "START",
-        "failed_steps": []
-    }
-
-    config = {"configurable": {"thread_id": session_id}}
-
     try:
+        from backend.database import AsyncSessionLocal
+        from backend import models
+        
         async for event in finora_graph.astream(initial_state, config=config):
             for node_name in event.keys():
                 logger.info("[%s] Completed node: %s", session_id, node_name)
@@ -268,28 +219,90 @@ async def start_analysis_session(request: AnalysisRequest, db: AsyncSession = De
             for a in action_plan
         ]
 
-        # Re-fetch session to avoid detached instance issues if needed, 
-        # but since we are in same request it should be fine.
-        new_session.status = "AWAITING_APPROVAL"
-        new_session.current_step = state_values.get("current_step")
-        new_session.insight_report = insight_data
-        new_session.action_plan = plan_data
-        await db.commit()
-
-        return {
-            "session_id": session_id,
-            "status": "AWAITING_APPROVAL",
-            "current_step": state_values.get("current_step"),
-            "insight_report": insight_data,
-            "action_plan": plan_data,
-            "message": "Analysis complete. Review the action plan and approve to execute."
-        }
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(models.AnalysisSession).where(models.AnalysisSession.id == session_id))
+            session = result.scalar_one_or_none()
+            if session:
+                session.status = "AWAITING_APPROVAL"
+                session.current_step = state_values.get("current_step")
+                session.insight_report = insight_data
+                session.action_plan = plan_data
+                await db.commit()
+                logger.info("[%s] Session successfully updated in DB.", session_id)
 
     except Exception as e:
-        logger.error("[%s] Pipeline error: %s", session_id, str(e))
-        new_session.status = "FAILED"
-        await db.commit()
-        raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
+        logger.error("[%s] Background Pipeline error: %s", session_id, str(e))
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(models.AnalysisSession).where(models.AnalysisSession.id == session_id))
+            session = result.scalar_one_or_none()
+            if session:
+                session.status = "FAILED"
+                await db.commit()
+
+@app.post("/analyze/session")
+async def start_analysis_session(request: AnalysisRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    """
+    Receives documents from the Android app.
+    Triggers the agent pipeline in the background and returns a session_id immediately.
+    """
+    session_id = f"session_{uuid.uuid4().hex[:8]}"
+    
+    # Save session to DB immediately
+    new_session = models.AnalysisSession(
+        id=session_id,
+        status="INGESTING",
+        user_id="default_user" 
+    )
+    db.add(new_session)
+    
+    documents = []
+    for doc in request.documents:
+        ingested_doc = IngestedDocument(
+            id=doc.id,
+            source_type=doc.source_type,
+            raw_content=doc.raw_content,
+            normalized_content=doc.normalized_content,
+            credibility_score=doc.credibility_score,
+            document_timestamp=doc.document_timestamp,
+            staleness_score=doc.staleness_score
+        )
+        documents.append(ingested_doc)
+        
+        db_doc = models.Document(
+            id=doc.id,
+            session_id=session_id,
+            source_type=doc.source_type,
+            raw_content=doc.raw_content,
+            normalized_content=doc.normalized_content,
+            credibility_score=doc.credibility_score,
+            document_timestamp=doc.document_timestamp,
+            staleness_score=doc.staleness_score
+        )
+        db.add(db_doc)
+
+    await db.commit()
+
+    initial_state: FinoraState = {
+        "session_id": session_id,
+        "documents": documents,
+        "insight_report": None,
+        "resolved_contradictions": [],
+        "action_plan": [],
+        "execution_log": [],
+        "current_step": "START",
+        "failed_steps": []
+    }
+
+    config = {"configurable": {"thread_id": session_id}}
+
+    # Start the graph in a background task
+    background_tasks.add_task(run_graph_background, session_id, initial_state, config)
+
+    return {
+        "session_id": session_id,
+        "status": "PROCESSING",
+        "message": "Analysis started in background. Polling session ID for results."
+    }
 
 
 @app.get("/analyze/session/{session_id}/stream")
@@ -429,29 +442,25 @@ async def approve_and_execute(request: ApprovalRequest, db: AsyncSession = Depen
         raise HTTPException(status_code=500, detail=f"Execution error: {str(e)}")
 
 
-@app.get("/analyze/session/{session_id}")
-async def get_session_status(session_id: str):
+@app.get("/analyze/session/{session_id}/full")
+async def get_full_session_results(session_id: str, db: AsyncSession = Depends(get_db)):
     """
-    Returns the current status of any session by ID.
+    Returns the complete analysis results for a session.
     """
-    config = {"configurable": {"thread_id": session_id}}
-    current_state = finora_graph.get_state(config)
+    result = await db.execute(select(models.AnalysisSession).where(models.AnalysisSession.id == session_id))
+    session = result.scalar_one_or_none()
 
-    if not current_state.values:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session {session_id} not found"
-        )
-
-    state_values = current_state.values
-    insight_report = state_values.get("insight_report")
-    action_plan = state_values.get("action_plan", [])
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
 
     return {
-        "session_id": session_id,
-        "current_step": state_values.get("current_step"),
-        "risks_count": len(insight_report.risks) if insight_report else 0,
-        "actions_count": len(action_plan),
-        "failed_steps": state_values.get("failed_steps", []),
-        "execution_log": state_values.get("execution_log", [])
+        "session_id": session.id,
+        "status": session.status,
+        "current_step": session.current_step,
+        "insight_report": session.insight_report,
+        "action_plan": session.action_plan,
+        "message": "Full results retrieved."
     }
+
+@app.get("/analyze/session/{session_id}")
+async def get_session_status(session_id: str, db: AsyncSession = Depends(get_db)):

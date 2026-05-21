@@ -47,6 +47,10 @@ class FinoraRepository(
         api.getSessionStatus(sessionId)
     }
 
+    suspend fun getFullSessionResults(sessionId: String): Result<AnalysisSessionResponse> = safeApiCall {
+        api.getFullSessionResults(sessionId)
+    }
+
     // ── Approval & Execution ────────────────────────────────────
 
     /**

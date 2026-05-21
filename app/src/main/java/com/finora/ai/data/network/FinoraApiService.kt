@@ -36,6 +36,11 @@ interface FinoraApiService {
         @Path("session_id") sessionId: String
     ): Response<SessionStatusResponse>
 
+    @GET("/analyze/session/{session_id}/full")
+    suspend fun getFullSessionResults(
+        @Path("session_id") sessionId: String
+    ): Response<AnalysisSessionResponse>
+
     // ── Approval & Execution ────────────────────────────────────
 
     /**

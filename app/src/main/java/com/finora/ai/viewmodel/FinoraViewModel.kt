@@ -124,29 +124,81 @@ class FinoraViewModel : ViewModel() {
      */
     fun startAnalysis(selectedSourceTypes: List<String>) {
         viewModelScope.launch {
-            pipelineState = PipelineState.Running(step = "INGESTING", progress = 0.1f)
+            pipelineState = PipelineState.Running(step = "INITIATING", progress = 0.1f)
             analysisResult = null
             approvalResult = null
             executionState = ExecutionState.Idle
 
             val documents = buildDemoDocuments(selectedSourceTypes)
 
-            pipelineState = PipelineState.Running(step = "ANALYZING", progress = 0.3f)
-
             repository.startAnalysis(
                 documents = documents,
                 userQuery = "Analyze the financial health of my textile business. Detect contradictions, assess risks, and suggest actions."
             )
                 .onSuccess { response ->
-                    currentSessionId = response.sessionId
-                    analysisResult = response
-                    pipelineState = PipelineState.Complete(response)
+                    val sessionId = response.sessionId
+                    currentSessionId = sessionId
+                    
+                    // Start polling for results
+                    pollAnalysisStatus(sessionId)
                 }
                 .onFailure { error ->
                     pipelineState = PipelineState.Error(
-                        error.localizedMessage ?: "Analysis failed"
+                        error.localizedMessage ?: "Failed to start analysis"
                     )
                 }
+        }
+    }
+
+    private fun pollAnalysisStatus(sessionId: String) {
+        viewModelScope.launch {
+            var isComplete = false
+            var attempts = 0
+            val maxAttempts = 60 // 2 minutes max polling
+
+            while (!isComplete && attempts < maxAttempts) {
+                attempts++
+                delay(2000) // Poll every 2 seconds
+
+                repository.getSessionStatus(sessionId).onSuccess { status ->
+                    val currentStep = status.currentStep ?: "PROCESSING"
+                    pipelineState = PipelineState.Running(
+                        step = currentStep,
+                        progress = 0.3f + (attempts.toFloat() / maxAttempts.toFloat()) * 0.6f
+                    )
+
+                    // Check if analysis is actually done (we need the full report)
+                    // The getSessionStatus endpoint currently only returns basic stats.
+                    // We need to re-fetch the full session once it moves past planning.
+                    if (currentStep == "VALIDATION_COMPLETE" || currentStep == "PLANNING_COMPLETE") {
+                        // Re-fetch full session to get insight report and action plan
+                        // We use the startAnalysis success response structure
+                        // Actually, let's update the backend to return full data in getSessionStatus 
+                        // or add a GET /analyze/session/{id} that returns everything.
+                        
+                        // For now, let's assume we can re-query a "final" state
+                        isComplete = true
+                        fetchFinalAnalysisResult(sessionId)
+                    }
+                }.onFailure {
+                    // Ignore transient errors while polling
+                }
+            }
+            
+            if (!isComplete && attempts >= maxAttempts) {
+                pipelineState = PipelineState.Error("Analysis timed out. Please try again.")
+            }
+        }
+    }
+
+    private fun fetchFinalAnalysisResult(sessionId: String) {
+        viewModelScope.launch {
+            repository.getFullSessionResults(sessionId).onSuccess { response ->
+                analysisResult = response
+                pipelineState = PipelineState.Complete(response)
+            }.onFailure { error ->
+                pipelineState = PipelineState.Error("Failed to fetch analysis results: ${error.localizedMessage}")
+            }
         }
     }
 

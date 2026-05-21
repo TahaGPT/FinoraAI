@@ -5,15 +5,17 @@ import sys
 import asyncio
 import uuid
 import logging
+import traceback
+from datetime import datetime
 from typing import Dict, Any, List
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -56,6 +58,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Models ───────────────────────────────────────────────────
 
 class DocumentInput(BaseModel):
     id: str
@@ -77,6 +80,88 @@ class ApprovalRequest(BaseModel):
     approved: bool
     user_comment: str = ""
 
+# ── Error Handlers ───────────────────────────────────────────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_msg = f"Unhandled exception: {str(exc)}"
+    logger.error(f"{error_msg}\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": error_msg, "traceback": traceback.format_exc()}
+    )
+
+# ── Helpers ──────────────────────────────────────────────────
+
+async def run_graph_background(session_id: str, initial_state: FinoraState, config: dict):
+    """
+    Runs the agent graph in the background and updates the database upon completion.
+    This prevents HTTP timeouts.
+    """
+    try:
+        from backend.database import AsyncSessionLocal
+        from backend import models
+        
+        async for event in finora_graph.astream(initial_state, config=config):
+            for node_name in event.keys():
+                logger.info("[%s] Completed node: %s", session_id, node_name)
+
+        current_state = finora_graph.get_state(config)
+        state_values = current_state.values
+
+        insight_report = state_values.get("insight_report")
+        action_plan = state_values.get("action_plan", [])
+        
+        # Update session in DB with results
+        insight_data = {
+            "risks": insight_report.risks if insight_report else [],
+            "opportunities": insight_report.opportunities if insight_report else [],
+            "contradictions": insight_report.contradictions if insight_report else [],
+            "key_signals": [
+                {"metric": s.metric, "value": str(s.value)}
+                for s in (insight_report.key_signals if insight_report else [])
+            ]
+        }
+        
+        def get_val(item, attr):
+            if isinstance(item, dict):
+                return item.get(attr)
+            return getattr(item, attr, None)
+
+        plan_data = [
+            {
+                "action_id": get_val(a, 'action_id'),
+                "type": get_val(a, 'type'),
+                "description": get_val(a, 'description'),
+                "status": get_val(a, 'status'),
+                "dependencies": get_val(a, 'dependencies'),
+                "rollback_action": get_val(a, 'rollback_action'),
+                "estimated_cost": get_val(a, 'estimated_cost') or 0
+            }
+            for a in action_plan
+        ]
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(models.AnalysisSession).where(models.AnalysisSession.id == session_id))
+            session = result.scalar_one_or_none()
+            if session:
+                session.status = "AWAITING_APPROVAL"
+                session.current_step = state_values.get("current_step")
+                session.insight_report = insight_data
+                session.action_plan = plan_data
+                await db.commit()
+                logger.info("[%s] Session successfully updated in DB.", session_id)
+
+    except Exception as e:
+        logger.error("[%s] Background Pipeline error: %s\n%s", session_id, str(e), traceback.format_exc())
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(models.AnalysisSession).where(models.AnalysisSession.id == session_id))
+            session = result.scalar_one_or_none()
+            if session:
+                session.status = "FAILED"
+                await db.commit()
+
+# ── API Endpoints ────────────────────────────────────────────
 
 @app.get("/")
 async def root():
@@ -175,89 +260,6 @@ async def get_audit_trail(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error fetching audit trail: {e}")
         return []
-
-async def run_graph_background(session_id: str, initial_state: FinoraState, config: dict):
-    """
-    Runs the agent graph in the background and updates the database upon completion.
-    This prevents HTTP timeouts.
-    """
-    try:
-        from backend.database import AsyncSessionLocal
-        from backend import models
-        
-        async for event in finora_graph.astream(initial_state, config=config):
-            for node_name in event.keys():
-                logger.info("[%s] Completed node: %s", session_id, node_name)
-
-        current_state = finora_graph.get_state(config)
-        state_values = current_state.values
-
-        insight_report = state_values.get("insight_report")
-        action_plan = state_values.get("action_plan", [])
-        
-        # Update session in DB with results
-        insight_data = {
-            "risks": insight_report.risks if insight_report else [],
-            "opportunities": insight_report.opportunities if insight_report else [],
-            "contradictions": insight_report.contradictions if insight_report else [],
-            "key_signals": [
-                {"metric": s.metric, "value": str(s.value)}
-                for s in (insight_report.key_signals if insight_report else [])
-            ]
-        }
-        
-        def get_val(item, attr):
-            if isinstance(item, dict):
-                return item.get(attr)
-            return getattr(item, attr, None)
-
-        plan_data = [
-            {
-                "action_id": get_val(a, 'action_id'),
-                "type": get_val(a, 'type'),
-                "description": get_val(a, 'description'),
-                "status": get_val(a, 'status'),
-                "dependencies": get_val(a, 'dependencies'),
-                "rollback_action": get_val(a, 'rollback_action'),
-                "estimated_cost": get_val(a, 'estimated_cost') or 0
-            }
-            for a in action_plan
-        ]
-
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(select(models.AnalysisSession).where(models.AnalysisSession.id == session_id))
-            session = result.scalar_one_or_none()
-            if session:
-                session.status = "AWAITING_APPROVAL"
-                session.current_step = state_values.get("current_step")
-                session.insight_report = insight_data
-                session.action_plan = plan_data
-                await db.commit()
-                logger.info("[%s] Session successfully updated in DB.", session_id)
-
-    except Exception as e:
-        logger.error("[%s] Background Pipeline error: %s", session_id, str(e))
-        async with AsyncSessionLocal() as db:
-            result = await db.execute(select(models.AnalysisSession).where(models.AnalysisSession.id == session_id))
-            session = result.scalar_one_or_none()
-            if session:
-                session.status = "FAILED"
-                await db.commit()
-
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request
-from fastapi.responses import JSONResponse
-import traceback
-
-# ... imports ...
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    error_msg = f"Unhandled exception: {str(exc)}"
-    logger.error(f"{error_msg}\n{traceback.format_exc()}")
-    return JSONResponse(
-        status_code=500,
-        content={"detail": error_msg, "traceback": traceback.format_exc()}
-    )
 
 @app.post("/analyze/session")
 async def start_analysis_session(request: AnalysisRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
@@ -360,14 +362,26 @@ async def stream_analysis(session_id: str):
 
             report = state_values.get("insight_report")
             if report:
-                yield f"data: RISKS_COUNT: {len(report.risks)}\n\n"
+                # Handle both dict and object
+                def get_risks(r):
+                    if isinstance(r, dict): return r.get("risks", [])
+                    return getattr(r, "risks", [])
+                
+                def get_opps(r):
+                    if isinstance(r, dict): return r.get("opportunities", [])
+                    return getattr(r, "opportunities", [])
+
+                risks = get_risks(report)
+                opps = get_opps(report)
+
+                yield f"data: RISKS_COUNT: {len(risks)}\n\n"
                 await asyncio.sleep(0.1)
 
-                for risk in report.risks:
+                for risk in risks:
                     yield f"data: RISK: {risk}\n\n"
                     await asyncio.sleep(0.1)
 
-                for opp in report.opportunities:
+                for opp in opps:
                     yield f"data: OPPORTUNITY: {opp}\n\n"
                     await asyncio.sleep(0.1)
 
@@ -376,7 +390,11 @@ async def stream_analysis(session_id: str):
             await asyncio.sleep(0.1)
 
             for action in plan:
-                yield f"data: ACTION: {action.action_id} | {action.type} | {action.status} | {action.description}\n\n"
+                def get_a_val(a, attr):
+                    if isinstance(a, dict): return a.get(attr)
+                    return getattr(a, attr, None)
+
+                yield f"data: ACTION: {get_a_val(action, 'action_id')} | {get_a_val(action, 'type')} | {get_a_val(action, 'status')} | {get_a_val(action, 'description')}\n\n"
                 await asyncio.sleep(0.1)
 
             yield f"data: STREAM_COMPLETE\n\n"
@@ -410,8 +428,6 @@ async def approve_and_execute(request: ApprovalRequest, db: AsyncSession = Depen
         if not session:
             raise HTTPException(status_code=404, detail=f"Session {request.session_id} not found")
         
-        # If memory is cleared, we might need to recreate state, but for hackathon 
-        # let's assume memory is present or session is already complete.
         if session.status == "EXECUTION_COMPLETE":
             return {"session_id": session.id, "status": "EXECUTION_COMPLETE", "message": "Already executed."}
         
@@ -469,7 +485,7 @@ async def approve_and_execute(request: ApprovalRequest, db: AsyncSession = Depen
         }
 
     except Exception as e:
-        logger.error("[%s] Execution error: %s", request.session_id, str(e))
+        logger.error("[%s] Execution error: %s\n%s", request.session_id, str(e), traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Execution error: {str(e)}")
 
 
@@ -501,18 +517,18 @@ async def get_session_status(session_id: str, db: AsyncSession = Depends(get_db)
     # Try fetching from DB first for persistence
     result = await db.execute(select(models.AnalysisSession).where(models.AnalysisSession.id == session_id))
     session = result.scalar_one_or_none()
-
+    
     if not session:
         # Fallback to checking memory if not in DB
         config = {"configurable": {"thread_id": session_id}}
         current_state = finora_graph.get_state(config)
         if not current_state.values:
             raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-
+        
         state_values = current_state.values
         insight_report = state_values.get("insight_report")
         action_plan = state_values.get("action_plan", [])
-
+        
         return {
             "session_id": session_id,
             "current_step": state_values.get("current_step"),
@@ -525,7 +541,7 @@ async def get_session_status(session_id: str, db: AsyncSession = Depends(get_db)
     # Return from DB
     insight_report = session.insight_report if session.insight_report else {}
     action_plan = session.action_plan if session.action_plan else []
-
+    
     return {
         "session_id": session.id,
         "current_step": session.current_step,

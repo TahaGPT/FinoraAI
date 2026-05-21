@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies (cache-bust: v3)
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
@@ -14,4 +14,5 @@ ENV PORT=8000
 
 EXPOSE ${PORT}
 
-CMD uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}
+# Use shell form so $PORT is expanded at runtime from Railway's env
+CMD uvicorn backend.main:app --host 0.0.0.0 --port $PORT

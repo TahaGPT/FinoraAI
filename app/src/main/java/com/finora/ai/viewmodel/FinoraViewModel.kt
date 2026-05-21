@@ -177,7 +177,7 @@ class FinoraViewModel : ViewModel() {
                         step = currentStep,
                         progress = 0.3f + (attempts.toFloat() / maxAttempts.toFloat()) * 0.6f
                     )
-...
+
                     if (currentStep == "VALIDATION_COMPLETE" || currentStep == "PLANNING_COMPLETE") {
                         Log.d(TAG, "Analysis complete or awaiting approval! Fetching full results for $sessionId")
                         isComplete = true

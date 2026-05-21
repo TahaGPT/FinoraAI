@@ -239,70 +239,96 @@ async def run_graph_background(session_id: str, initial_state: FinoraState, conf
                 session.status = "FAILED"
                 await db.commit()
 
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Request
+from fastapi.responses import JSONResponse
+import traceback
+
+# ... imports ...
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_msg = f"Unhandled exception: {str(exc)}"
+    logger.error(f"{error_msg}\n{traceback.format_exc()}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": error_msg, "traceback": traceback.format_exc()}
+    )
+
 @app.post("/analyze/session")
 async def start_analysis_session(request: AnalysisRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     """
     Receives documents from the Android app.
     Triggers the agent pipeline in the background and returns a session_id immediately.
     """
-    session_id = f"session_{uuid.uuid4().hex[:8]}"
-    
-    # Save session to DB immediately
-    new_session = models.AnalysisSession(
-        id=session_id,
-        status="INGESTING",
-        user_id="default_user" 
-    )
-    db.add(new_session)
-    
-    documents = []
-    for doc in request.documents:
-        ingested_doc = IngestedDocument(
-            id=doc.id,
-            source_type=doc.source_type,
-            raw_content=doc.raw_content,
-            normalized_content=doc.normalized_content,
-            credibility_score=doc.credibility_score,
-            document_timestamp=doc.document_timestamp,
-            staleness_score=doc.staleness_score
-        )
-        documents.append(ingested_doc)
+    logger.info("Received start_analysis_session request.")
+    try:
+        session_id = f"session_{uuid.uuid4().hex[:8]}"
         
-        db_doc = models.Document(
-            id=doc.id,
-            session_id=session_id,
-            source_type=doc.source_type,
-            raw_content=doc.raw_content,
-            normalized_content=doc.normalized_content,
-            credibility_score=doc.credibility_score,
-            document_timestamp=doc.document_timestamp,
-            staleness_score=doc.staleness_score
+        # Save session to DB immediately
+        new_session = models.AnalysisSession(
+            id=session_id,
+            status="INGESTING",
+            user_id="default_user" 
         )
-        db.add(db_doc)
+        db.add(new_session)
+        logger.info(f"Session {session_id} added to DB.")
+        
+        documents = []
+        for doc in request.documents:
+            ingested_doc = IngestedDocument(
+                id=doc.id, # Keep semantic ID for agents
+                source_type=doc.source_type,
+                raw_content=doc.raw_content,
+                normalized_content=doc.normalized_content,
+                credibility_score=doc.credibility_score,
+                document_timestamp=doc.document_timestamp,
+                staleness_score=doc.staleness_score
+            )
+            documents.append(ingested_doc)
+            
+            db_doc = models.Document(
+                id=f"{session_id}_{doc.id}", # Make unique for DB primary key
+                session_id=session_id,
+                source_type=doc.source_type,
+                raw_content=doc.raw_content,
+                normalized_content=doc.normalized_content,
+                credibility_score=doc.credibility_score,
+                document_timestamp=doc.document_timestamp,
+                staleness_score=doc.staleness_score
+            )
+            db.add(db_doc)
+            logger.info(f"Document {doc.id} (mapped to {session_id}_{doc.id}) added to DB.")
 
-    await db.commit()
+        logger.info("Attempting to commit DB changes...")
+        await db.commit()
+        logger.info("DB changes committed successfully.")
 
-    initial_state: FinoraState = {
-        "session_id": session_id,
-        "documents": documents,
-        "insight_report": None,
-        "resolved_contradictions": [],
-        "action_plan": [],
-        "execution_log": [],
-        "current_step": "START",
-        "failed_steps": []
-    }
+        initial_state: FinoraState = {
+            "session_id": session_id,
+            "documents": documents,
+            "insight_report": None,
+            "resolved_contradictions": [],
+            "action_plan": [],
+            "execution_log": [],
+            "current_step": "START",
+            "failed_steps": []
+        }
 
-    config = {"configurable": {"thread_id": session_id}}
+        config = {"configurable": {"thread_id": session_id}}
 
-    # Start the graph in a background task
-    background_tasks.add_task(run_graph_background, session_id, initial_state, config)
+        # Start the graph in a background task
+        background_tasks.add_task(run_graph_background, session_id, initial_state, config)
+        logger.info(f"Background task started for session {session_id}.")
 
-    return {
-        "session_id": session_id,
-        "status": "PROCESSING",
-        "message": "Analysis started in background. Polling session ID for results."
-    }
+        return {
+            "session_id": session_id,
+            "status": "PROCESSING",
+            "message": "Analysis started in background. Polling session ID for results."
+        }
+
+    except Exception as e:
+        logger.error(f"Error in start_analysis_session: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/analyze/session/{session_id}/stream")

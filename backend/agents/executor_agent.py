@@ -2,9 +2,11 @@
 
 import time
 import logging
+import uuid
 from typing import Dict, Any
-
-from .state import ActionItem
+from sqlalchemy import insert
+from ..database import AsyncSessionLocal
+from ..models import AuditEntry
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +32,29 @@ async def execute_single_action(action_id: str, action_type: str, description: s
         "ALERT":         f"System alert triggered: '{description}'",
         "SCHEDULE":      f"Recurring job scheduled: '{description}'",
     }
+    
+    # Simulate blockchain TX hash
+    tx_hash = f"0x{uuid.uuid4().hex}"
+    
+    # Save to Audit Trail in DB
+    try:
+        async with AsyncSessionLocal() as db:
+            audit_entry = AuditEntry(
+                tx_hash=tx_hash,
+                action_type=action_type,
+                description=description,
+                metadata_json={"action_id": action_id, "status": "success"}
+            )
+            db.add(audit_entry)
+            await db.commit()
+            logger.info(f"[Executor] Audit entry saved to DB for {action_id}")
+    except Exception as e:
+        logger.error(f"[Executor] Failed to save audit entry: {e}")
+
     return {
         "status": "success",
-        "message": messages.get(action_type, f"Action executed: '{description}'")
+        "message": messages.get(action_type, f"Action executed: '{description}'"),
+        "tx_hash": tx_hash
     }
 
 
@@ -70,7 +92,8 @@ async def action_executor_node(state: dict) -> dict:
                 "action_id": a_id,
                 "type": a_type,
                 "status": result["status"],
-                "message": result["message"]
+                "message": result["message"],
+                "tx_hash": result.get("tx_hash")
             })
 
         except Exception as e:

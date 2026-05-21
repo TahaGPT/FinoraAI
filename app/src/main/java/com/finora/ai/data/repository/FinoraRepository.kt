@@ -81,6 +81,20 @@ class FinoraRepository(
         )
     }
 
+    // ── Dashboard & Audit ───────────────────────────────────────
+
+    suspend fun getDashboardKpis(): Result<Map<String, Double>> = safeApiCall {
+        api.getDashboardKpis()
+    }
+
+    suspend fun getDashboardAlerts(): Result<List<Map<String, String>>> = safeApiCall {
+        api.getDashboardAlerts()
+    }
+
+    suspend fun getAuditTrail(): Result<List<Map<String, Any>>> = safeApiCall {
+        api.getAuditTrail()
+    }
+
     // ── Helper ──────────────────────────────────────────────────
 
     private suspend fun <T> safeApiCall(

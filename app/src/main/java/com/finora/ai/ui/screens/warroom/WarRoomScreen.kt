@@ -24,13 +24,21 @@ import com.finora.ai.data.model.*
 import com.finora.ai.ui.components.PulsingDot
 import com.finora.ai.ui.components.StressOMeter
 import com.finora.ai.ui.theme.*
+import com.finora.ai.viewmodel.FinoraViewModel
+import com.finora.ai.viewmodel.PipelineState
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.sin
 
+// ═══════════════════════════════════════════════════════════════
+// War Room Screen — Cinematic agent reasoning visualization
+// Now wired to FinoraViewModel for real backend progress
+// ═══════════════════════════════════════════════════════════════
+
 @Composable
 fun WarRoomScreen(
     sessionId: String,
+    viewModel: FinoraViewModel,
     onComplete: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -39,36 +47,85 @@ fun WarRoomScreen(
     var stressScore by remember { mutableIntStateOf(85) }
     var contradictionFlash by remember { mutableStateOf(false) }
     var isComplete by remember { mutableStateOf(false) }
+    val totalSteps = 8
 
+    // Animate the War Room steps while backend processes in parallel
     LaunchedEffect(Unit) {
         val steps = listOf(
             AgentTraceEvent(agentName="Orchestrator", step="1/6", type=TraceEventType.STEP_START, message="Initializing analysis session..."),
-            AgentTraceEvent(agentName="Ingestion Agent", step="2/6", type=TraceEventType.TOOL_CALL, message="Processing 6 data sources in parallel..."),
-            AgentTraceEvent(agentName="Ingestion Agent", step="2/6", type=TraceEventType.STEP_COMPLETE, message="All sources ingested. 287 records extracted.", durationMs=1840),
-            AgentTraceEvent(agentName="Insight Analyst", step="3/6", type=TraceEventType.INSIGHT_FOUND, message="Revenue declining 4.2% MoM"),
+            AgentTraceEvent(agentName="Ingestion Agent", step="2/6", type=TraceEventType.TOOL_CALL, message="Processing data sources in parallel..."),
+            AgentTraceEvent(agentName="Ingestion Agent", step="2/6", type=TraceEventType.STEP_COMPLETE, message="All sources ingested. Records extracted.", durationMs=1840),
+            AgentTraceEvent(agentName="Insight Analyst", step="3/6", type=TraceEventType.INSIGHT_FOUND, message="Analyzing financial signals and KPIs..."),
             AgentTraceEvent(agentName="Contradiction Detector", step="4/6", type=TraceEventType.CONTRADICTION_DETECTED, message="CONFLICT: CSV (500 units) vs Ledger (287 units)"),
             AgentTraceEvent(agentName="Contradiction Detector", step="4/6", type=TraceEventType.STEP_COMPLETE, message="Resolution: Ghost Ledger wins (recency)", durationMs=920),
-            AgentTraceEvent(agentName="Action Planner", step="5/6", type=TraceEventType.STEP_COMPLETE, message="5 actions planned, 1 budget-adjusted", durationMs=680),
-            AgentTraceEvent(agentName="Session", step="6/6", type=TraceEventType.SESSION_COMPLETE, message="Analysis complete — ready for review"),
+            AgentTraceEvent(agentName="Action Planner", step="5/6", type=TraceEventType.STEP_COMPLETE, message="Action chain generated with constraints", durationMs=680),
         )
+
         for (step in steps) {
             delay(if (step.type == TraceEventType.CONTRADICTION_DETECTED) 800 else 1200)
             traceEvents.add(step)
             currentStep++
-            if (step.type == TraceEventType.CONTRADICTION_DETECTED) { contradictionFlash = true; stressScore = 45; delay(1500); contradictionFlash = false }
-            if (step.type == TraceEventType.SESSION_COMPLETE) { stressScore = 72; isComplete = true }
+            if (step.type == TraceEventType.CONTRADICTION_DETECTED) {
+                contradictionFlash = true; stressScore = 45; delay(1500); contradictionFlash = false
+            }
         }
-        delay(1500); onComplete()
+
+        // Wait for the real backend to finish (if it hasn't yet)
+        while (viewModel.pipelineState !is PipelineState.Complete &&
+               viewModel.pipelineState !is PipelineState.Error) {
+            delay(500)
+        }
+
+        // Show completion step based on real result
+        when (val state = viewModel.pipelineState) {
+            is PipelineState.Complete -> {
+                val response = state.response
+                val signalsCount = response.insightReport?.keySignals?.size ?: 0
+                val actionsCount = response.actionPlan?.size ?: 0
+                val contradictions = response.insightReport?.contradictions?.size ?: 0
+
+                traceEvents.add(
+                    AgentTraceEvent(
+                        agentName = "Session",
+                        step = "6/6",
+                        type = TraceEventType.SESSION_COMPLETE,
+                        message = "Analysis complete — $signalsCount signals, $contradictions contradictions, $actionsCount actions planned"
+                    )
+                )
+                currentStep++
+                stressScore = if (contradictions > 0) 55 else 72
+                isComplete = true
+                delay(1500)
+                onComplete()
+            }
+            is PipelineState.Error -> {
+                traceEvents.add(
+                    AgentTraceEvent(
+                        agentName = "Session",
+                        step = "6/6",
+                        type = TraceEventType.ACTION_FAILED,
+                        message = "Error: ${state.message}"
+                    )
+                )
+                currentStep++
+                stressScore = 25
+                isComplete = true
+                // Still navigate — screens have fallback data
+                delay(2000)
+                onComplete()
+            }
+            else -> { /* shouldn't reach here */ }
+        }
     }
 
     val infiniteTransition = rememberInfiniteTransition(label = "wr")
-    val bgPulse by infiniteTransition.animateFloat(0f, 2*PI.toFloat(), infiniteRepeatable(tween(6000, easing=LinearEasing)), label="bg")
+    val bgPulse by infiniteTransition.animateFloat(0f, 2* PI.toFloat(), infiniteRepeatable(tween(6000, easing= LinearEasing)), label="bg")
     val flashAlpha by animateFloatAsState(if (contradictionFlash) 0.3f else 0f, tween(if (contradictionFlash) 200 else 800), label="flash")
 
     Box(modifier = Modifier.fillMaxSize().background(InkBlack)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             for (i in 0..15) {
-                val angle = bgPulse + i * (2*PI.toFloat()/16)
+                val angle = bgPulse + i * (2* PI.toFloat()/16)
                 val x = size.width*0.5f + sin(angle)*size.width*0.35f
                 val y = size.height*0.3f + sin(angle*1.5f+i)*size.height*0.15f
                 drawCircle(NeonMint.copy(alpha=0.15f+sin(angle)*0.1f), 2f+sin(angle*2)*1.5f, Offset(x,y))
@@ -144,7 +201,7 @@ fun WarRoomScreen(
                 }
             }
 
-            val progress by animateFloatAsState(currentStep/8f, tween(500, easing=FastOutSlowInEasing), label="p")
+            val progress by animateFloatAsState(currentStep.toFloat()/totalSteps.toFloat(), tween(500, easing=FastOutSlowInEasing), label="p")
             Column(Modifier.padding(horizontal=20.dp, vertical=12.dp)) {
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
                     Row(verticalAlignment=Alignment.CenterVertically) {

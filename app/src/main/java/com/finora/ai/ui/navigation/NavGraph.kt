@@ -2,10 +2,9 @@ package com.finora.ai.ui.navigation
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -25,6 +24,7 @@ import com.finora.ai.ui.screens.simulator.SimulatorScreen
 import com.finora.ai.ui.screens.simulator.ScenarioBattleScreen
 import com.finora.ai.ui.screens.audit.AuditTrailScreen
 import com.finora.ai.ui.screens.audit.AuditDetailScreen
+import com.finora.ai.viewmodel.FinoraViewModel
 
 // ═══════════════════════════════════════════════════════════════
 // FinoraAI Navigation Graph — Smooth animated transitions
@@ -37,6 +37,14 @@ fun FinoraNavGraph(
     onToggleTheme: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Shared ViewModel scoped to the NavGraph (activity-level)
+    val finoraViewModel: FinoraViewModel = viewModel()
+
+    // Check backend health on first composition
+    LaunchedEffect(Unit) {
+        finoraViewModel.checkBackendHealth()
+    }
+
     NavHost(
         navController = navController,
         startDestination = Screen.Splash.route,
@@ -118,6 +126,7 @@ fun FinoraNavGraph(
         // ── Home Dashboard ──────────────────────────────────
         composable(route = Screen.Home.route) {
             HomeScreen(
+                viewModel = finoraViewModel,
                 isDarkTheme = isDarkTheme,
                 onToggleTheme = onToggleTheme,
                 onNewAnalysis = { navController.navigate(Screen.SourceSelection.route) },
@@ -127,9 +136,10 @@ fun FinoraNavGraph(
             )
         }
 
-        // ── Source Selection ────────────────────────────────
+        // ── Source Selection (wired to backend) ─────────────
         composable(route = Screen.SourceSelection.route) {
             SourceSelectionScreen(
+                viewModel = finoraViewModel,
                 onStartAnalysis = { sessionId ->
                     navController.navigate(Screen.WarRoom.createRoute(sessionId))
                 },
@@ -137,7 +147,7 @@ fun FinoraNavGraph(
             )
         }
 
-        // ── War Room (dramatic entry) ──────────────────────
+        // ── War Room (wired to backend) ─────────────────────
         composable(
             route = Screen.WarRoom.route,
             arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
@@ -147,6 +157,7 @@ fun FinoraNavGraph(
             val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
             WarRoomScreen(
                 sessionId = sessionId,
+                viewModel = finoraViewModel,
                 onComplete = {
                     navController.navigate(Screen.InsightReport.createRoute(sessionId))
                 },
@@ -154,7 +165,7 @@ fun FinoraNavGraph(
             )
         }
 
-        // ── Insight Report ──────────────────────────────────
+        // ── Insight Report (wired to backend) ───────────────
         composable(
             route = Screen.InsightReport.route,
             arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
@@ -162,6 +173,7 @@ fun FinoraNavGraph(
             val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
             InsightReportScreen(
                 sessionId = sessionId,
+                viewModel = finoraViewModel,
                 onGenerateActionPlan = {
                     navController.navigate(Screen.ActionChain.createRoute(sessionId))
                 },
@@ -169,7 +181,7 @@ fun FinoraNavGraph(
             )
         }
 
-        // ── Action Chain ────────────────────────────────────
+        // ── Action Chain (wired to backend) ─────────────────
         composable(
             route = Screen.ActionChain.route,
             arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
@@ -177,6 +189,7 @@ fun FinoraNavGraph(
             val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
             ActionChainScreen(
                 sessionId = sessionId,
+                viewModel = finoraViewModel,
                 onExecuteChain = {
                     navController.navigate(Screen.ExecutionTracker.createRoute(sessionId))
                 },
@@ -184,7 +197,7 @@ fun FinoraNavGraph(
             )
         }
 
-        // ── Execution Tracker ───────────────────────────────
+        // ── Execution Tracker (wired to backend) ────────────
         composable(
             route = Screen.ExecutionTracker.route,
             arguments = listOf(navArgument("sessionId") { type = NavType.StringType }),
@@ -192,6 +205,7 @@ fun FinoraNavGraph(
             val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
             ExecutionTrackerScreen(
                 sessionId = sessionId,
+                viewModel = finoraViewModel,
                 onComplete = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Home.route) { inclusive = true }
@@ -254,6 +268,7 @@ fun FinoraNavGraph(
         // ── Audit Trail ─────────────────────────────────────
         composable(route = Screen.AuditTrail.route) {
             AuditTrailScreen(
+                viewModel = finoraViewModel,
                 onEntryClick = { entryId ->
                     navController.navigate(Screen.AuditDetail.createRoute(entryId))
                 },

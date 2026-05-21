@@ -13,3 +13,6 @@ pypdf
 web3
 nest-asyncio
 python-dotenv
+sqlalchemy
+asyncpg
+psycopg2-binary

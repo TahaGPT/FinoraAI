@@ -22,23 +22,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.finora.ai.data.model.AuditEntry
 import com.finora.ai.ui.theme.*
+import com.finora.ai.viewmodel.FinoraViewModel
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AuditTrailScreen(onEntryClick: (String) -> Unit, onBack: () -> Unit) {
+fun AuditTrailScreen(
+    viewModel: FinoraViewModel,
+    onEntryClick: (String) -> Unit, 
+    onBack: () -> Unit
+) {
     var showContent by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { delay(100); showContent = true }
+    
+    LaunchedEffect(Unit) { 
+        delay(100)
+        showContent = true 
+        viewModel.fetchAuditTrail()
+    }
 
-    val mockEntries = remember { listOf(
-        AuditEntry(txHash="0x7a3f...8b2c", documentHash="sha256:e4d2f...", actionType="OCR_COMPLETE", description="Ghost Ledger scan verified — 287 units confirmed", etherscanUrl="https://mumbai.polygonscan.com/tx/0x7a3f"),
-        AuditEntry(txHash="0x9c1e...4d7f", documentHash="sha256:a1b3c...", actionType="CONTRADICTION_RESOLVED", description="Stock conflict resolved: Ghost Ledger wins (87% confidence)"),
-        AuditEntry(txHash="0x2b5a...9e1d", documentHash="sha256:f7e8d...", actionType="ACTION_EXECUTED", description="Emergency procurement order placed — ₨350k"),
-        AuditEntry(txHash="0x6d8f...3c4a", documentHash="sha256:b2c4e...", actionType="ACTION_EXECUTED", description="Customer delivery estimates updated (+5 days)"),
-        AuditEntry(txHash="0x1f4b...7a9e", documentHash="sha256:d9e1f...", actionType="SIMULATION_RUN", description="Monte Carlo simulation: 3 scenarios, 1000 paths each"),
-        AuditEntry(txHash="0x8e2c...5f3b", documentHash="sha256:c3d5a...", actionType="ACTION_EXECUTED", description="24-hour monitoring alert activated"),
-        AuditEntry(txHash="0x4a7d...2e8c", documentHash="sha256:a8b9c...", actionType="SESSION_COMPLETE", description="Full analysis session completed — 6 sources, 5 actions"),
-    )}
+    val realEntries = viewModel.auditEntries
 
     Scaffold(
         topBar = {
@@ -71,14 +73,14 @@ fun AuditTrailScreen(onEntryClick: (String) -> Unit, onBack: () -> Unit) {
                             Spacer(Modifier.width(12.dp))
                             Column {
                                 Text("Blockchain Secured", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold), color = MintLeaf)
-                                Text("${mockEntries.size} entries on Mumbai Testnet · Immutable audit trail", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${realEntries.size} entries on Mumbai Testnet · Immutable audit trail", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                 }
             }
 
-            itemsIndexed(mockEntries) { index, entry ->
+            itemsIndexed(realEntries) { index, entry ->
                 AnimatedVisibility(showContent, enter = fadeIn(tween(300, delayMillis = 100 + index * 60)) + slideInHorizontally(initialOffsetX = { it / 4 }, animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy))) {
                     val typeColor = when (entry.actionType) {
                         "OCR_COMPLETE" -> PearlAqua; "CONTRADICTION_RESOLVED" -> WarningAmber

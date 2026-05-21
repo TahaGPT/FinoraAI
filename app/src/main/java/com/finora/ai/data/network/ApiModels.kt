@@ -50,17 +50,20 @@ data class KeySignalResponse(
 data class InsightReportResponse(
     val risks: List<String> = emptyList(),
     val opportunities: List<String> = emptyList(),
-    val contradictions: List<String> = emptyList(),
+    val contradictions: List<Map<String, Any?>> = emptyList(),
     @SerializedName("key_signals") val keySignals: List<KeySignalResponse> = emptyList(),
 )
 
 data class ActionItemResponse(
-    @SerializedName("action_id") val actionId: String,
-    val type: String,
-    val description: String,
-    val status: String,
+    @SerializedName("action_id") val actionId: String? = null,
+    val type: String? = null,
+    val description: String? = null,
+    val status: String? = null,
     val dependencies: List<String> = emptyList(),
     @SerializedName("rollback_action") val rollbackAction: String? = null,
+    @SerializedName("estimated_cost") val estimatedCost: Double? = null,
+    @SerializedName("estimated_duration") val estimatedDuration: Int? = null,
+    @SerializedName("requires_approval") val requiresApproval: Boolean? = false,
 )
 
 data class AnalysisSessionResponse(

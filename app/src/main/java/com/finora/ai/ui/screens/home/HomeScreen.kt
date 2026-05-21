@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.finora.ai.data.model.*
 import com.finora.ai.ui.components.*
 import com.finora.ai.ui.theme.*
+import com.finora.ai.viewmodel.FinoraViewModel
 import kotlinx.coroutines.delay
 
 // ═══════════════════════════════════════════════════════════════
@@ -33,6 +34,7 @@ import kotlinx.coroutines.delay
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
+    viewModel: FinoraViewModel,
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
     onNewAnalysis: () -> Unit,
@@ -46,53 +48,12 @@ fun HomeScreen(
     LaunchedEffect(Unit) {
         delay(100)
         showContent = true
+        viewModel.fetchDashboardData()
     }
 
-    // Mock data
-    val kpiData = remember {
-        KPIData(
-            runwayDays = 142,
-            currentBalance = 4_350_000.0,
-            monthlyBurn = 780_000.0,
-            momChange = -3.2f,
-            healthScore = 72,
-        )
-    }
-
-    val mockAlerts = remember {
-        listOf(
-            AlertItem(
-                type = AlertType.CONTRADICTION,
-                title = "Contradiction Detected",
-                message = "Warehouse CSV vs Ghost Ledger: stock count mismatch (500 vs 287)",
-                icon = Icons.Filled.Bolt,
-            ),
-            AlertItem(
-                type = AlertType.MARKET_ALERT,
-                title = "USD/PKR Rate Spike",
-                message = "Exchange rate increased 3.2% in last 24h — impact analysis running",
-                icon = Icons.AutoMirrored.Filled.TrendingUp,
-            ),
-            AlertItem(
-                type = AlertType.ACTION_EXECUTED,
-                title = "Action Completed",
-                message = "Emergency procurement order placed (PKR 350k, auto-adjusted from 500k)",
-                icon = Icons.Filled.CheckCircle,
-            ),
-            AlertItem(
-                type = AlertType.CASH_DANGER,
-                title = "Cash Danger Zone",
-                message = "Projected runway dropped below 60 days under stress scenario",
-                icon = Icons.Filled.ErrorOutline,
-            ),
-            AlertItem(
-                type = AlertType.INSIGHT,
-                title = "New Insight",
-                message = "Seasonal revenue pattern detected — Q3 revenue typically drops 18%",
-                icon = Icons.Filled.Lightbulb,
-            ),
-        )
-    }
+    // Use real data from ViewModel
+    val kpiData = viewModel.kpiData
+    val realAlerts = viewModel.alerts
 
     Scaffold(
         floatingActionButton = {
@@ -278,7 +239,7 @@ fun HomeScreen(
                 }
             }
 
-            itemsIndexed(mockAlerts) { index, alert ->
+            itemsIndexed(realAlerts) { index, alert ->
                 AnimatedVisibility(
                     visible = showContent,
                     enter = fadeIn(tween(400, delayMillis = 500 + index * 80)) +

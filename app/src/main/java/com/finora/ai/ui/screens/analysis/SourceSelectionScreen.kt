@@ -19,22 +19,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.finora.ai.data.model.SourceType
 import com.finora.ai.ui.theme.*
+import com.finora.ai.viewmodel.FinoraViewModel
 import kotlinx.coroutines.delay
-import java.util.UUID
 
 // ═══════════════════════════════════════════════════════════════
 // Source Selection Screen — Multi-source analysis setup
+// Now wired to FinoraViewModel → backend API
 // ═══════════════════════════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SourceSelectionScreen(
+    viewModel: FinoraViewModel,
     onStartAnalysis: (String) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -45,6 +46,14 @@ fun SourceSelectionScreen(
     LaunchedEffect(Unit) {
         delay(100)
         showContent = true
+    }
+
+    // When the ViewModel gets a session ID from the backend, navigate
+    LaunchedEffect(viewModel.currentSessionId) {
+        val sessionId = viewModel.currentSessionId
+        if (sessionId != null && isStarting) {
+            onStartAnalysis(sessionId)
+        }
     }
 
     Scaffold(
@@ -91,8 +100,10 @@ fun SourceSelectionScreen(
                         Button(
                             onClick = {
                                 isStarting = true
-                                val sessionId = UUID.randomUUID().toString().take(8)
-                                onStartAnalysis(sessionId)
+                                // Trigger the real backend analysis
+                                viewModel.startAnalysis(
+                                    selectedSources.map { it.name }
+                                )
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -149,6 +160,24 @@ fun SourceSelectionScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+
+                        // Backend connection indicator
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (viewModel.isBackendReachable) SuccessGreen else WarningAmber)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (viewModel.isBackendReachable) "Backend connected" else "Backend connecting...",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
                         Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
@@ -234,7 +263,7 @@ private fun SourceToggleCard(
             Icon(
                 imageVector = sourceType.icon,
                 contentDescription = sourceType.label,
-                modifier = androidx.compose.ui.Modifier.size(32.dp),
+                modifier = Modifier.size(32.dp),
                 tint = if (isSelected) MintLeaf else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(modifier = Modifier.width(16.dp))

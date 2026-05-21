@@ -10,3 +10,4 @@ pdfplumber
 pypdf
 web3
 nest-asyncio
+python-dotenv

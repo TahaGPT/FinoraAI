@@ -577,3 +577,11 @@ This project is built for the **AI Seekho Hackathon 2026**. All rights reserved 
 <p align="center">
   <em>Last updated: May 2026 · FinoraAI · AI Seekho Hackathon 2026</em>
 </p>
+
+
+Taha Ahmed
+Zara Tahir
+Minahal Salahuddin
+Muskan Ahmed
+Burhan Aslam 
+:) haha

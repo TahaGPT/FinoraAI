@@ -49,7 +49,7 @@ interface FinoraApiService {
     // ── Dashboard & Audit ───────────────────────────────────────
 
     @GET("/dashboard/kpis")
-    suspend fun getDashboardKpis(): Response<Map<String, Double>>
+    suspend fun getDashboardKpis(@Query("email") email: String): Response<Map<String, Double>>
 
     @GET("/dashboard/alerts")
     suspend fun getDashboardAlerts(): Response<List<Map<String, String>>>

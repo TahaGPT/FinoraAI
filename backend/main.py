@@ -93,16 +93,19 @@ async def health():
 
 
 @app.get("/dashboard/kpis")
-async def get_dashboard_kpis(db: AsyncSession = Depends(get_db)):
+async def get_dashboard_kpis(email: str = "taha@finora.ai", db: AsyncSession = Depends(get_db)):
     """
-    Returns the latest financial KPIs for the Home Dashboard.
+    Returns the latest financial KPIs for the Home Dashboard based on user context.
     """
     try:
-        result = await db.execute(select(models.FinancialMetric))
+        # Fetch metrics prefixed with the user's email
+        result = await db.execute(
+            select(models.FinancialMetric).where(models.FinancialMetric.metric_name.like(f"{email}:%"))
+        )
         metrics = result.scalars().all()
         
-        # If no metrics in DB, return some defaults for the demo
         if not metrics:
+            # Fallback for new/unknown users
             return {
                 "runway_days": 142,
                 "current_balance": 4350000.0,
@@ -111,10 +114,10 @@ async def get_dashboard_kpis(db: AsyncSession = Depends(get_db)):
                 "health_score": 72
             }
             
-        data = {m.metric_name: m.value for m in metrics}
+        data = {m.metric_name.split(":")[-1]: m.value for m in metrics}
         return data
     except Exception as e:
-        logger.error(f"Error fetching KPIs: {e}")
+        logger.error(f"Error fetching KPIs for {email}: {e}")
         return {"error": str(e)}
 
 @app.get("/dashboard/alerts")

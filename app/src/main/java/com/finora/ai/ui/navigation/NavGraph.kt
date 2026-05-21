@@ -115,6 +115,7 @@ fun FinoraNavGraph(
             },
         ) {
             LoginScreen(
+                viewModel = finoraViewModel,
                 onLoginSuccess = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }

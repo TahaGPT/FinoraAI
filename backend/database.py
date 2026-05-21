@@ -44,18 +44,47 @@ async def init_db():
         from . import models
         await conn.run_sync(Base.metadata.create_all)
     
-    # Seed initial metrics if table is empty
+    # Seed initial data if tables are empty
     async with AsyncSessionLocal() as db:
         from . import models
         from sqlalchemy import select
+        
+        # 1. Seed Financial Metrics (KPIs) for different user contexts
+        # We'll use metric_name prefix as a simple user simulator for now
         result = await db.execute(select(models.FinancialMetric))
         if not result.scalars().first():
             db.add_all([
-                models.FinancialMetric(metric_name="runway_days", value=142),
-                models.FinancialMetric(metric_name="current_balance", value=4350000.0),
-                models.FinancialMetric(metric_name="monthly_burn", value=780000.0),
-                models.FinancialMetric(metric_name="mom_change", value=-3.2),
-                models.FinancialMetric(metric_name="health_score", value=72)
+                # Taha (Healthy)
+                models.FinancialMetric(metric_name="taha@finora.ai:runway_days", value=142),
+                models.FinancialMetric(metric_name="taha@finora.ai:current_balance", value=4350000.0),
+                models.FinancialMetric(metric_name="taha@finora.ai:monthly_burn", value=780000.0),
+                models.FinancialMetric(metric_name="taha@finora.ai:health_score", value=88),
+                
+                # Founder (Struggling)
+                models.FinancialMetric(metric_name="founder@demo.pk:runway_days", value=42),
+                models.FinancialMetric(metric_name="founder@demo.pk:current_balance", value=850000.0),
+                models.FinancialMetric(metric_name="founder@demo.pk:monthly_burn", value=1200000.0),
+                models.FinancialMetric(metric_name="founder@demo.pk:health_score", value=35),
             ])
             await db.commit()
-            print("Database seeded with initial metrics.")
+            print("Database seeded with multi-user metrics.")
+
+        # 2. Seed some initial audit entries to verify agent history
+        result = await db.execute(select(models.AuditEntry))
+        if not result.scalars().first():
+            db.add_all([
+                models.AuditEntry(
+                    tx_hash="0x7a3f4b8c9d2e1f0a",
+                    action_type="CONTRADICTION_RESOLVED",
+                    description="Conflict between Bank Statement and CSV resolved (Credibility: 0.95)",
+                    metadata_json={"user": "taha@finora.ai", "agent": "ContradictionAgent"}
+                ),
+                models.AuditEntry(
+                    tx_hash="0x9c1e5d3f7a2b6e4d",
+                    action_type="ACTION_EXECUTED",
+                    description="Emergency order for 500 units Cotton Yarn placed via Supplier API",
+                    metadata_json={"user": "founder@demo.pk", "agent": "ExecutorAgent"}
+                )
+            ])
+            await db.commit()
+            print("Database seeded with audit history.")

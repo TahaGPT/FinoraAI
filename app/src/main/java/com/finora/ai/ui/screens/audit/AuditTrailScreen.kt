@@ -40,7 +40,7 @@ fun AuditTrailScreen(
         viewModel.fetchAuditTrail()
     }
 
-    val realEntries = viewModel.auditEntries
+    val realEntries: List<AuditEntry> = viewModel.auditEntries
 
     Scaffold(
         topBar = {

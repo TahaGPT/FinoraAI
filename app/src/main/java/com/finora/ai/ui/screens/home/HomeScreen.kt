@@ -53,7 +53,7 @@ fun HomeScreen(
 
     // Use real data from ViewModel
     val kpiData = viewModel.kpiData
-    val realAlerts = viewModel.alerts
+    val realAlerts: List<AlertItem> = viewModel.alerts
 
     Scaffold(
         floatingActionButton = {
@@ -127,16 +127,21 @@ fun HomeScreen(
                                     )
                                 }
                                 IconButton(onClick = { /* TODO: Notifications */ }) {
-                                    Badge(
-                                        containerColor = DangerRed,
+                                    BadgedBox(
+                                        badge = {
+                                            Badge(
+                                                containerColor = DangerRed,
+                                            ) {
+                                                Text("3", fontSize = 10.sp)
+                                            }
+                                        }
                                     ) {
-                                        Text("3", fontSize = 10.sp)
+                                        Icon(
+                                            Icons.Filled.Notifications,
+                                            contentDescription = "Notifications",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
                                     }
-                                    Icon(
-                                        Icons.Filled.Notifications,
-                                        contentDescription = "Notifications",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
                                 }
                             }
                         }

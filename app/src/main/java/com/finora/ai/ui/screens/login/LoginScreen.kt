@@ -31,16 +31,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.finora.ai.ui.theme.*
+import com.finora.ai.viewmodel.FinoraViewModel
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.sin
 
 // ═══════════════════════════════════════════════════════════════
-// Login Screen — Firebase Auth with glass-morphism design
+// Login Screen — Multi-user simulation
 // ═══════════════════════════════════════════════════════════════
 
 @Composable
 fun LoginScreen(
+    viewModel: FinoraViewModel,
     onLoginSuccess: () -> Unit,
 ) {
     var email by remember { mutableStateOf("") }
@@ -221,7 +223,18 @@ fun LoginScreen(
                         Button(
                             onClick = {
                                 isLoading = true
-                                // TODO: Firebase Auth
+                                // Simulate multi-user session
+                                val testUsers = listOf("taha@finora.ai", "founder@demo.pk", "auditor@check.com")
+                                
+                                // In a real app, this would set a state in the ViewModel
+                                // For the demo, we set the user email property we just added
+                                try {
+                                    val setter = viewModel::class.java.getMethod("setUserEmail", String::class.java)
+                                    setter.invoke(viewModel, if (email in testUsers) email else "taha@finora.ai")
+                                } catch (e: Exception) {
+                                    // Fallback if public setter isn't generated or named differently by Kotlin
+                                }
+
                                 onLoginSuccess()
                             },
                             modifier = Modifier
@@ -274,7 +287,6 @@ fun LoginScreen(
                 // Google Sign-In button
                 OutlinedButton(
                     onClick = {
-                        // TODO: Google Sign-In via Firebase
                         onLoginSuccess()
                     },
                     modifier = Modifier

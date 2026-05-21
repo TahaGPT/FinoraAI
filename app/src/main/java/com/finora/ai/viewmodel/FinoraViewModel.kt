@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.finora.ai.data.model.*
 import com.finora.ai.data.network.*
 import com.finora.ai.data.repository.FinoraRepository
 import kotlinx.coroutines.launch
@@ -28,6 +29,9 @@ class FinoraViewModel : ViewModel() {
         private set
 
     var isBackendReachable by mutableStateOf(false)
+        private set
+
+    var userEmail by mutableStateOf("taha@finora.ai") // Default simulation user
         private set
 
     // ── Stored Results ──────────────────────────────────────────
@@ -71,7 +75,7 @@ class FinoraViewModel : ViewModel() {
 
     fun fetchDashboardData() {
         viewModelScope.launch {
-            repository.getDashboardKpis().onSuccess { data ->
+            repository.getDashboardKpis(userEmail).onSuccess { data ->
                 kpiData = KPIData(
                     runwayDays = data["runway_days"]?.toInt() ?: 142,
                     currentBalance = data["current_balance"] ?: 4350000.0,

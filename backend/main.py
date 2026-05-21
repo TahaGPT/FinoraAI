@@ -464,3 +464,42 @@ async def get_full_session_results(session_id: str, db: AsyncSession = Depends(g
 
 @app.get("/analyze/session/{session_id}")
 async def get_session_status(session_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Returns the current status of any session by ID.
+    """
+    # Try fetching from DB first for persistence
+    result = await db.execute(select(models.AnalysisSession).where(models.AnalysisSession.id == session_id))
+    session = result.scalar_one_or_none()
+
+    if not session:
+        # Fallback to checking memory if not in DB
+        config = {"configurable": {"thread_id": session_id}}
+        current_state = finora_graph.get_state(config)
+        if not current_state.values:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+
+        state_values = current_state.values
+        insight_report = state_values.get("insight_report")
+        action_plan = state_values.get("action_plan", [])
+
+        return {
+            "session_id": session_id,
+            "current_step": state_values.get("current_step"),
+            "risks_count": len(insight_report.risks) if insight_report else 0,
+            "actions_count": len(action_plan),
+            "failed_steps": state_values.get("failed_steps", []),
+            "execution_log": state_values.get("execution_log", [])
+        }
+
+    # Return from DB
+    insight_report = session.insight_report if session.insight_report else {}
+    action_plan = session.action_plan if session.action_plan else []
+
+    return {
+        "session_id": session.id,
+        "current_step": session.current_step,
+        "risks_count": len(insight_report.get("risks", [])),
+        "actions_count": len(action_plan),
+        "failed_steps": [], 
+        "execution_log": []
+    }

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.finora.ai.data.model.*
 import com.finora.ai.data.network.*
 import com.finora.ai.data.repository.FinoraRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
